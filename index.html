@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>院内SPD物品管理システム (一括インポート対応版)</title>
+<style>
+  * { box-sizing: border-box; font-family: "Segoe UI", Meiryo, sans-serif; }
+  body { margin: 0; background: #f4f6f9; color: #333; display: flex; flex-direction: column; height: 100vh; }
+  
+  /* 印刷用スタイル設定 */
+  @media print {
+    body { background: #fff; height: auto; overflow: visible !important; }
+    .no-print { display: none !important; }
+    .main-container { padding: 0 !important; display: block !important; height: auto !important; overflow: visible !important; }
+    .print-area { display: block !important; }
+    .card-grid { display: grid !important; grid-template-columns: repeat(2, 91mm); gap: 10px; padding: 10mm; }
+    .order-card { width: 91mm; height: 55mm; border: 1px dashed #666 !important; page-break-inside: avoid; }
+    
+    /* 発注書印刷用 */
+    .po-print-page { display: block !important; page-break-after: always; color: #000; padding: 10mm; font-size: 14px; }
+    .po-table th, .po-table td { border: 1px solid #000 !important; padding: 6px !important; }
+  }
+
+  /* ヘッダー */
+  .header { background: #2c3e50; color: #fff; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .header h1 { margin: 0; font-size: 20px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+  
+  /* メインレイアウト */
+  .main-container { display: flex; flex: 1; padding: 20px; gap: 20px; overflow: hidden; }
+  .panel { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); display: flex; flex-direction: column; padding: 15px; overflow: hidden; }
+  
+  /* 3カラム構成 */
+  .left-column { flex: 3; display: flex; flex-direction: column; gap: 15px; }
+  .center-column { flex: 3; display: flex; flex-direction: column; gap: 15px; }
+  .right-column { flex: 4; }
+
+  h2 { font-size: 15px; margin-top: 0; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #34495e; color: #2c3e50; display: flex; justify-content: space-between; align-items: center; }
+  h3 { font-size: 14px; margin-top: 0; color: #2c3e50; border-left: 4px solid #3498db; padding-left: 8px; }
+
+  /* フォーム・入力関連 */
+  .form-group { margin-bottom: 8px; }
+  .form-group label { display: block; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #555; }
+  .form-row { display: flex; gap: 8px; }
+  input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+  textarea { font-family: monospace; font-size: 12px; resize: none; }
+  
+  /* ボタン */
+  .btn { padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+  .btn-primary { background: #3498db; color: #fff; }
+  .btn-success { background: #2ecc71; color: #fff; }
+  .btn-danger { background: #e74c3c; color: #fff; }
+  .btn-secondary { background: #95a5a6; color: #fff; }
+  .btn-purple { background: #9b59b6; color: #fff; }
+  .btn-orange { background: #e67e22; color: #fff; }
+  .btn-info { background: #00bc8c; color: #fff; }
+  .btn:hover { opacity: 0.9; }
+  
+  /* テーブル */
+  .table-wrapper { flex: 1; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; margin-top: 5px; background: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+  th { background: #f8f9fa; position: sticky; top: 0; padding: 8px; border-bottom: 2px solid #e0e0e0; font-weight: bold; color: #666; z-index: 10; }
+  td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+  
+  /* バーコード専用入力 */
+  .barcode-huge { font-size: 22px; font-weight: bold; text-align: center; border: 2px solid #e74c3c; background: #fff5f5; }
+  .alert-box { padding: 10px; border-radius: 4px; margin-bottom: 12px; font-weight: bold; text-align: center; font-size: 14px; display: none; }
+  .alert-ok { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+  .alert-ng { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+  /* 💳 発注カード プレビュー用 */
+  .print-area { display: none; }
+  .preview-container { flex: 1; overflow-y: auto; border: 1px solid #ddd; background: #f0f0f0; padding: 10px; border-radius: 4px; }
+  .card-grid { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .order-card { 
+    width: 91mm; height: 55mm; background: #fff; border: 1px solid #999; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 4mm; display: flex; flex-direction: column; justify-content: space-between; position: relative; color: #000; box-sizing: border-box;
+  }
+  .card-dept { font-size: 14px; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 2px; text-align: center; }
+  .card-details { font-size: 11px; margin-top: 4px; line-height: 1.3; flex: 1; }
+  .card-details div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-qty { text-align: right; font-size: 13px; font-weight: bold; margin-top: -2px; }
+  .card-barcode-zone { display: flex; flex-direction: column; align-items: center; justify-content: center; margin-top: auto; }
+  .barcode-svg { max-height: 12mm; width: 80mm; }
+  .barcode-text { font-family: monospace; font-size: 9px; margin-top: 1px; letter-spacing: 2px; }
+
+  /* モーダルスタイル */
+  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+  .modal-content { background: #fff; width: 90%; height: 85%; border-radius: 8px; display: flex; flex-direction: column; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 15px; }
+  .modal-header h2 { border: none; margin: 0; }
+  .modal-body { flex: 1; display: flex; gap: 20px; overflow: hidden; }
+
+  /* 発注書印刷用スタイル */
+  .po-print-page { display: none; background: #fff; font-family: "MS Mincho", "Segoe UI", sans-serif; }
+  .po-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+  .po-title { text-align: center; font-size: 24px; font-weight: bold; text-decoration: underline; margin-bottom: 20px; letter-spacing: 4px; }
+  .po-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+  .po-table th, .po-table td { border: 1px solid #333; padding: 8px; font-size: 13px; }
+  .po-table th { background: #f2f2f2; text-align: center; }
+  
+  .help-text { font-size: 11px; color: #7f8c8d; margin-top: 2px; line-height: 1.3; }
+</style>
+</head>
+<body>
+
+<div class="header no-print">
+  <h1>📦 院内SPD物品管理システム</h1>
+  <div class="header-actions">
+    <button class="btn btn-info" onclick="openModal('importModal')">📥 データ一括インポート</button>
+    <button class="btn btn-purple" onclick="openModal('masterModal')">🏢 施設・業者管理</button>
+    <button class="btn btn-orange" onclick="openModal('orderModal'); refreshOrderDashboard();">📄 発注書作成・履歴</button>
+    <button class="btn btn-secondary" onclick="exportBackup()">📤 全データバックアップ(JSON)</button>
+    <label class="btn btn-secondary" style="margin:0; cursor:pointer;">
+      📥 バックアップ読込 <input type="file" accept=".json" style="display:none;" onchange="importBackup(this)">
+    </label>
+  </div>
+</div>
+
+<div class="main-container">
+  
+  <!-- 左カラム: 各種マスタ登録 -->
+  <div class="left-column no-print">
+    
+    <!-- 商品マスタ -->
+    <div class="panel" style="flex: 6;">
+      <h2>📝 商品マスタ登録 <span style="font-size:11px; color:#7f8c8d;" id="itemCount">0件</span></h2>
+      <form id="itemForm" onsubmit="saveItem(event)">
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;"><label>JANコード *</label><input type="text" id="i_jan" required placeholder="スキャンまたは入力"></div>
+          <div class="form-group" style="flex: 1;"><label>発注先業者 *</label><select id="i_vendor" required><option value="">-- 業者を選択 --</option></select></div>
+        </div>
+        <div class="form-group"><label>メーカー名</label><input type="text" id="i_maker" placeholder="例：テルモ"></div>
+        <div class="form-group"><label>商品名 *</label><input type="text" id="i_name" required placeholder="例：滅菌シルキーベール"></div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;"><label>規格</label><input type="text" id="i_spec" placeholder="例：7.5×7.5"></div>
+          <div class="form-group" style="flex:1;"><label>単位名</label><input type="text" id="i_unit" placeholder="例：箱" value="箱"></div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:4px;">商品登録/更新</button>
+      </form>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>JAN</th><th>業者</th><th>メーカー</th><th>商品名/規格</th><th>操作</th></tr></thead>
+          <tbody id="itemTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 部署マスタ -->
+    <div class="panel" style="flex: 4;">
+      <h2>🏢 部署マスタ登録 <span style="font-size:11px; color:#7f8c8d;" id="deptCount">0件</span></h2>
+      <form id="deptForm" onsubmit="saveDept(event)">
+        <div class="form-row">
+          <div class="form-group" style="flex:4;"><label>部署コード *</label><input type="text" id="d_code" required placeholder="例：A01"></div>
+          <div class="form-group" style="flex:6;"><label>部署名 *</label><input type="text" id="d_name" required placeholder="例：5階病棟"></div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">部署登録</button>
+      </form>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>コード</th><th>部署名</th><th>操作</th></tr></thead>
+          <tbody id="deptTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 中央カラム: 発注カード発行 -->
+  <div class="center-column no-print">
+    <div class="panel" style="flex: 1;">
+      <h2>💳 発注カードの発行 (名刺サイズ)
+        <button class="btn btn-success" style="padding:3px 8px; font-size:11px;" onclick="window.print()">🖨️ 印刷 / PDF出力</button>
+      </h2>
+      <div class="form-row" style="margin-bottom: 10px;">
+        <div style="flex:1;">
+          <label style="font-size:11px; font-weight:bold; color:#555;">1. 発行する部署を選択</label>
+          <select id="print_dept_select"></select>
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:11px; font-weight:bold; color:#555;">2. 対象商品を選択</label>
+          <select id="print_item_select"></select>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="addCardToPrint()">選択したカードを印刷リストに追加</button>
+      
+      <div style="font-size:11px; font-weight:bold; margin-bottom:3px; color:#555;">印刷プレビュー（全 <span id="cardCount">0</span> 枚） <button class="btn btn-danger" style="padding:1px 5px; font-size:10px;" onclick="clearPrintList()">クリア</button></div>
+      <div class="preview-container">
+        <div class="card-grid" id="previewGrid"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 右カラム: バーコードスキャン(消費) ＆ 実績履歴 -->
+  <div class="panel right-column no-print">
+    <h2>🚨 発注カード・バーコード消費入力</h2>
+    <div id="alertBox" class="alert-box"></div>
+    
+    <div class="form-group">
+      <label style="font-size: 12px; font-weight: bold; color: #e74c3c;">【カードスキャンエリア】</label>
+      <input type="text" id="barcodeScanner" class="barcode-huge" placeholder="ここをクリックしてスキャン" autocomplete="off" inputmode="url">
+    </div>
+    
+    <h2>📊 消費実績履歴 
+      <button class="btn btn-success" style="padding: 4px 10px; font-size: 11px;" onclick="downloadLogCSV()">📤 実績CSV出力</button>
+    </h2>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>消費日時</th>
+            <th>部署</th>
+            <th>物品名/規格</th>
+            <th>数量</th>
+            <th>状態</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="logTableBody"></tbody>
+      </table>
+    </div>
+    <div style="text-align: right; margin-top: 5px;">
+      <button class="btn btn-danger" style="padding: 2px 8px; font-size: 11px;" onclick="clearLogs()">🗑️ 履歴クリア</button>
+    </div>
+  </div>
+</div>
+
+<!-- 📥 データ一括インポート モーダル画面 -->
+<div id="importModal" class="modal-overlay no-print" onclick="closeModalOnOverlay(event, 'importModal')">
+  <div class="modal-content" style="width: 80%; height: 85%;">
+    <div class="modal-header">
+      <h2>📥 Excel・テキストデータ一括取り込み</h2>
+      <button class="btn btn-secondary" onclick="closeModal('importModal')">✕ 閉じる</button>
+    </div>
+    <div class="modal-body" style="flex-direction: column; overflow-y: auto;">
+      
+      <!-- 商品マスタの一括インポート -->
+      <div class="panel" style="margin-bottom: 20px; flex: none;">
+        <h3>📦 商品マスタの一括インポート</h3>
+        <p class="help-text">Excel等の列を左から以下の順に並べてコピーし、下の枠内に貼り付けてください（カンマ区切り、またはタブ区切りに対応）。<br>
+        <strong>並び順： JANコード , 業者コード , メーカー名 , 商品名 , 規格・型番 , 単位名</strong><br>
+        <span style="color:#e74c3c;">※業者コードはあらかじめ「施設・業者管理」画面で登録されている必要があります。</span></p>
+        <textarea id="importItemText" rows="6" placeholder="（例）&#13;4987350343412	V01	テルモ	シリンジ 5mL	100本入	箱&#13;4900070119830	V02	アルケア	シルキーポア	5号 6巻入	箱"></textarea>
+        <div style="margin-top: 8px; text-align: right;">
+          <button class="btn btn-primary" onclick="processItemImport()">商品マスタへ一括取込を実行</button>
+        </div>
+      </div>
+
+      <!-- 発行カード情報の一括インポート -->
+      <div class="panel" style="flex: none;">
+        <h3>💳 発注カード発行リスト（印刷キュー）の一括インポート</h3>
+        <p class="help-text">一度に大量の発注カードを発行したい場合、部署とJANコードの組み合わせを貼り付けてください。<br>
+        <strong>並び順： 部署コード , JANコード</strong></p>
+        <textarea id="importCardText" rows="6" placeholder="（例）&#13;A1	4987350343412&#13;A1	4900070119830&#13;B2	4987350244115"></textarea>
+        <div style="margin-top: 8px; text-align: right;">
+          <button class="btn btn-success" onclick="processCardImport()">印刷リストへ一括追加を実行</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- 🏢 施設・業者管理 モーダル画面 -->
+<div id="masterModal" class="modal-overlay no-print" onclick="closeModalOnOverlay(event, 'masterModal')">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🏢 施設情報 ＆ 業者マスタ設定</h2>
+      <button class="btn btn-secondary" onclick="closeModal('masterModal')">✕ 閉じる</button>
+    </div>
+    <div class="modal-body">
+      <div class="panel" style="flex: 1;">
+        <h3>🏥 自施設の情報設定 (発注書ヘッダー用)</h3>
+        <form id="facilityForm" onsubmit="saveFacility(event)">
+          <div class="form-group"><label>施設名</label><input type="text" id="f_name" required></div>
+          <div class="form-group"><label>郵便番号</label><input type="text" id="f_zip" placeholder="例：123-4567"></div>
+          <div class="form-group"><label>住所</label><input type="text" id="f_addr"></div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1;"><label>電話番号</label><input type="text" id="f_tel"></div>
+            <div class="form-group" style="flex:1;"><label>FAX番号</label><input type="text" id="f_fax"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1;"><label>担当部署名</label><input type="text" id="f_dept" placeholder="例：用度課"></div>
+            <div class="form-group" style="flex:1;"><label>担当者名</label><input type="text" id="f_user"></div>
+          </div>
+          <button type="submit" class="btn btn-success" style="width: 100%; margin-top: 10px;">施設情報を保存</button>
+        </form>
+      </div>
+      <div class="panel" style="flex: 1;">
+        <h3>🚚 発注先業者マスタ登録</h3>
+        <form id="vendorForm" onsubmit="saveVendor(event)">
+          <div class="form-row">
+            <div class="form-group" style="flex: 4;"><label>業者コード *</label><input type="text" id="v_code" required placeholder="例：V01"></div>
+            <div class="form-group" style="flex: 6;"><label>業者名 *</label><input type="text" id="v_name" required placeholder="例：〇〇医療器械"></div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">業者登録</button>
+        </form>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>コード</th><th>業者名</th><th>操作</th></tr></thead>
+            <tbody id="vendorTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 📄 発注書作成・履歴 モーダル画面 -->
+<div id="orderModal" class="modal-overlay no-print" onclick="closeModalOnOverlay(event, 'orderModal')">
+  <div class="modal-content" style="width:95%; height:90%;">
+    <div class="modal-header">
+      <h2>📄 業者別発注書の発行・履歴管理</h2>
+      <button class="btn btn-secondary" onclick="closeModal('orderModal')">✕ 閉じる</button>
+    </div>
+    <div class="modal-body">
+      <div class="panel" style="flex: 1;">
+        <h3>未発注の消費データ (業者別集計結果)</h3>
+        <div style="margin-bottom: 10px;">
+          <button class="btn btn-orange" onclick="generatePurchaseOrders()">⚡ 掲載分の一括発注書を作成・印刷</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>発注先業者</th><th>メーカー</th><th>物品名/規格</th><th>発注数</th><th>行備考(部署名)</th></tr>
+            </thead>
+            <tbody id="unprintedOrderBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel" style="flex: 1;">
+        <h3>📜 発注書 発行履歴（再発行）</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>発行日時</th><th>発注番号</th><th>発注先業者</th><th>品目数</th><th>操作</th></tr>
+            </thead>
+            <tbody id="orderHistoryBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 🖨️ 印刷時用エリア -->
+<div class="print-area">
+  <div class="card-grid" id="actualPrintGrid"></div>
+  <div id="actualPoPrintGrid"></div>
+</div>
+
+<script>
+// --- データストレージ構成 ---
+let itemMaster = JSON.parse(localStorage.getItem("spd_i_master") || "{}");
+let deptMaster = JSON.parse(localStorage.getItem("spd_d_master") || "{}");
+let vendorMaster = JSON.parse(localStorage.getItem("spd_v_master") || "{}");
+let facilityInfo = JSON.parse(localStorage.getItem("spd_f_info") || '{"name":"","zip":"","addr":"","tel":"","fax":"","dept":"","user":""}');
+let consumeLogs = JSON.parse(localStorage.getItem("spd_c_logs") || "[]");
+let poHistory = JSON.parse(localStorage.getItem("spd_po_history") || "[]");
+let printQueue = [];
+
+window.addEventListener("DOMContentLoaded", () => {
+  renderItemTable();
+  renderDeptTable();
+  renderVendorTable();
+  loadFacilityForm();
+  updateSelectOptions();
+  renderLogTable();
+  renderPrintGrid();
+  
+  const scanner = document.getElementById("barcodeScanner");
+  
+  const cleanAndProcessInput = () => {
+    let rawValue = scanner.value;
+    if(!rawValue) return;
+    
+    let cleaned = rawValue.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+    
+    const kanaMap = {
+      'ー': '-', '。': '.', '＿': '_', '＊': '*', 'ほ': '-', 'る': '.', 'ろ': '_', 'け': ':', 'せ': ';',
+      'た':'A','て':'B','い':'C','す':'D','か':'E','ん':'F','な':'G','に':'H','ら':'I','ま':'J',
+      'の':'K','お':'L','は':'M','き':'N','く':'O','ま':'P','ち':'Q','と':'R','し':'S','は':'T',
+      'ひ':'U','こ':'V','み':'W','も':'X','ね':'Y','る':'Z'
+    };
+    for(let k in kanaMap) {
+      cleaned = cleaned.replaceAll(k, kanaMap[k]);
+    }
+    
+    cleaned = cleaned.replace(/[^A-Za-z0-9.\-$ /+%]/g, "").trim().toUpperCase();
+    
+    if (cleaned) {
+      processCardScan(cleaned);
+    }
+    scanner.value = "";
+  };
+
+  scanner.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      cleanAndProcessInput();
+    }
+  });
+
+  scanner.addEventListener("blur", () => {
+    if(scanner.value.trim() !== "") {
+      cleanAndProcessInput();
+    }
+  });
+  
+  document.body.addEventListener("click", (e) => {
+    const isInputFocused = ["INPUT", "SELECT", "OPTION", "TEXTAREA"].includes(e.target.tagName);
+    const isModalOpen = document.getElementById("masterModal").style.display === "flex" || 
+                       document.getElementById("orderModal").style.display === "flex" ||
+                       document.getElementById("importModal").style.display === "flex";
+    if (!isInputFocused && e.target.id !== "barcodeScanner" && !isModalOpen) {
+      setTimeout(() => scanner.focus(), 50);
+    }
+  });
+  setTimeout(() => scanner.focus(), 200);
+});
+
+// --- 📥 テキストエリアからのデータ一括取り込み処理 ---
+
+// 1. 商品マスタの一括インポート
+function processItemImport() {
+  const rawText = document.getElementById("importItemText").value.trim();
+  if(!rawText) { alert("テキストエリアにデータが入力されていません。"); return; }
+  
+  const lines = rawText.split(/\r?\n/);
+  let successCount = 0;
+  let skipCount = 0;
+  let errorLog = [];
+
+  lines.forEach((line, index) => {
+    if(!line.trim()) return; // 空行はスキップ
+    
+    // タブ区切り、またはカンマ区切りで分解
+    let tokens = line.split(/\t|,/);
+    tokens = tokens.map(t => t.trim().replace(/^"|"$/g, '')); // 前後のトリムとダブルクォーテーション削除
+    
+    if(tokens.length < 4) {
+      errorLog.push(`${index + 1}行目: 列数が足りません(JAN,業者,メーカー,商品名は必須)`);
+      skipCount++;
+      return;
+    }
+    
+    const jan = tokens[0];
+    const vCode = tokens[1].toUpperCase();
+    const maker = tokens[2] || "";
+    const name = tokens[3];
+    const spec = tokens[4] || "";
+    const unit = tokens[5] || "箱";
+    
+    if(!jan || !name) {
+      errorLog.push(`${index + 1}行目: JANコードまたは商品名が空です`);
+      skipCount++;
+      return;
+    }
+    
+    // 業者マスタに存在するかチェック（任意ですが、未登録の警告を出しつつ登録は許可、または登録制限）
+    if(!vendorMaster[vCode]) {
+      errorLog.push(`${index + 1}行目: 警告 - 業者コード [${vCode}] は業者マスタに未登録です。そのまま登録します。`);
+    }
+    
+    // マスタに格納
+    itemMaster[jan] = { vCode, maker, name, spec, unit };
+    successCount++;
+  });
+  
+  localStorage.setItem("spd_i_master", JSON.stringify(itemMaster));
+  renderItemTable();
+  updateSelectOptions();
+  
+  let msg = `商品マスタのインポートが完了しました。\n登録・更新成功: ${successCount} 件\nスキップ: ${skipCount} 件`;
+  if(errorLog.length > 0) {
+    msg += `\n\n【詳細・警告】\n` + errorLog.slice(0, 10).join("\n");
+    if(errorLog.length > 10) msg += `\n...他 ${errorLog.length - 10} 件`;
+  }
+  alert(msg);
+  document.getElementById("importItemText").value = "";
+}
+
+// 2. 発行カード情報の一括インポート
+function processCardImport() {
+  const rawText = document.getElementById("importCardText").value.trim();
+  if(!rawText) { alert("テキストエリアにデータが入力されていません。"); return; }
+  
+  const lines = rawText.split(/\r?\n/);
+  let successCount = 0;
+  let skipCount = 0;
+  let errorLog = [];
+
+  lines.forEach((line, index) => {
+    if(!line.trim()) return;
+    
+    let tokens = line.split(/\t|,/);
+    tokens = tokens.map(t => t.trim().replace(/^"|"$/g, ''));
+    
+    if(tokens.length < 2) {
+      errorLog.push(`${index + 1}行目: 列数が足りません(部署コード, JANコードが必要です)`);
+      skipCount++;
+      return;
+    }
+    
+    const dCode = tokens[0].toUpperCase();
+    const jan = tokens[1];
+    
+    if(!deptMaster[dCode]) {
+      errorLog.push(`${index + 1}行目: 部署コード [${dCode}] が部署マスタにありません`);
+      skipCount++;
+      return;
+    }
+    if(!itemMaster[jan]) {
+      errorLog.push(`${index + 1}行目: JANコード [${jan}] が商品マスタにありません`);
+      skipCount++;
+      return;
+    }
+    
+    printQueue.push({ dCode, jan });
+    successCount++;
+  });
+  
+  renderPrintGrid();
+  
+  let msg = `発行カード印刷リストへの追加が完了しました。\n追加成功: ${successCount} 枚\nスキップ: ${skipCount} 件`;
+  if(errorLog.length > 0) {
+    msg += `\n\n【エラー詳細】\n` + errorLog.slice(0, 10).join("\n");
+  }
+  alert(msg);
+  document.getElementById("importCardText").value = "";
+}
+
+
+// --- モーダル制御表示 ---
+function openModal(id) { document.getElementById(id).style.display = "flex"; }
+function closeModal(id) { document.getElementById(id).style.display = "none"; setTimeout(() => document.getElementById("barcodeScanner").focus(), 100); }
+function closeModalOnOverlay(e, id) { if(e.target.id === id) closeModal(id); }
+
+// --- 施設情報制御 ---
+function loadFacilityForm() {
+  for(let key in facilityInfo) {
+    const el = document.getElementById(`f_${key}`);
+    if(el) el.value = facilityInfo[key];
+  }
+}
+function saveFacility(e) {
+  e.preventDefault();
+  for(let key in facilityInfo) {
+    facilityInfo[key] = document.getElementById(`f_${key}`).value.trim();
+  }
+  localStorage.setItem("spd_f_info", JSON.stringify(facilityInfo));
+  alert("施設情報を保存しました。");
+}
+
+// --- 業者マスタ制御 ---
+function saveVendor(e) {
+  e.preventDefault();
+  const code = document.getElementById("v_code").value.trim().toUpperCase();
+  const name = document.getElementById("v_name").value.trim();
+  if(!/^[A-Z0-9.\-$ /+%]+$/.test(code)) { alert("業者コードには半角英数字、記号のみ使用できます。"); return; }
+  vendorMaster[code] = { name };
+  localStorage.setItem("spd_v_master", JSON.stringify(vendorMaster));
+  renderVendorTable();
+  updateSelectOptions();
+  document.getElementById("vendorForm").reset();
+}
+function renderVendorTable() {
+  const tbody = document.getElementById("vendorTableBody");
+  if(!tbody) return;
+  tbody.innerHTML = "";
+  Object.keys(vendorMaster).forEach(code => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><code>${code}</code></td><td><b>${vendorMaster[code].name}</b></td>
+      <td><button class="btn btn-danger" style="padding:1px 5px; font-size:10px;" onclick="deleteVendor('${code}')">削除</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function deleteVendor(code) {
+  if(confirm("この業者を削除しますか？")) {
+    delete vendorMaster[code]; localStorage.setItem("spd_v_master", JSON.stringify(vendorMaster)); renderVendorTable(); updateSelectOptions();
+  }
+}
+
+// --- 商品・部署マスタ制御 ---
+function saveItem(e) {
+  e.preventDefault();
+  const jan = document.getElementById("i_jan").value.trim();
+  const vCode = document.getElementById("i_vendor").value;
+  const maker = document.getElementById("i_maker").value.trim();
+  const name = document.getElementById("i_name").value.trim();
+  const spec = document.getElementById("i_spec").value.trim();
+  const unit = document.getElementById("i_unit").value.trim() || "箱";
+  
+  if(!vCode) { alert("業者を選択してください。"); return; }
+  itemMaster[jan] = { vCode, maker, name, spec, unit };
+  localStorage.setItem("spd_i_master", JSON.stringify(itemMaster));
+  renderItemTable();
+  updateSelectOptions();
+  document.getElementById("itemForm").reset();
+  document.getElementById("i_unit").value = "箱";
+}
+function renderItemTable() {
+  const tbody = document.getElementById("itemTableBody");
+  if(!tbody) return;
+  tbody.innerHTML = "";
+  const keys = Object.keys(itemMaster);
+  document.getElementById("itemCount").innerText = `${keys.length}件`;
+  keys.forEach(jan => {
+    const it = itemMaster[jan];
+    const vName = vendorMaster[it.vCode] ? vendorMaster[it.vCode].name : `<span style="color:red;">未登録(${it.vCode})</span>`;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><b>${jan}</b></td><td>${vName}</td><td>${it.maker}</td><td>${it.name} ${it.spec}</td>
+      <td><button class="btn btn-danger" style="padding:1px 5px; font-size:10px;" onclick="deleteItem('${jan}')">削除</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function deleteItem(jan) { if(confirm("削除しますか？")) { delete itemMaster[jan]; localStorage.setItem("spd_i_master", JSON.stringify(itemMaster)); renderItemTable(); updateSelectOptions(); } }
+
+function saveDept(e) {
+  e.preventDefault();
+  const code = document.getElementById("d_code").value.trim().toUpperCase();
+  const name = document.getElementById("d_name").value.trim();
+  if(!/^[A-Z0-9.\-$ /+%]+$/.test(code)) { alert("部署コードには半角英数字、記号のみ使用できます。"); return; }
+  deptMaster[code] = { name };
+  localStorage.setItem("spd_d_master", JSON.stringify(deptMaster));
+  renderDeptTable();
+  updateSelectOptions();
+  document.getElementById("deptForm").reset();
+}
+function renderDeptTable() {
+  const tbody = document.getElementById("deptTableBody");
+  if(!tbody) return;
+  tbody.innerHTML = "";
+  const keys = Object.keys(deptMaster);
+  document.getElementById("deptCount").innerText = `${keys.length}件`;
+  keys.forEach(code => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><code>${code}</code></td><td><b>${deptMaster[code].name}</b></td>
+      <td><button class="btn btn-danger" style="padding:1px 5px; font-size:10px;" onclick="deleteDept('${code}')">削除</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function deleteDept(code) { if(confirm("削除しますか？")) { delete deptMaster[code]; localStorage.setItem("spd_d_master", JSON.stringify(deptMaster)); renderDeptTable(); updateSelectOptions(); } }
+
+function updateSelectOptions() {
+  const dSel = document.getElementById("print_dept_select");
+  const iSel = document.getElementById("print_item_select");
+  const vSel = document.getElementById("i_vendor");
+  
+  if(!dSel || !iSel || !vSel) return;
+  
+  dSel.innerHTML = ""; iSel.innerHTML = ""; 
+  vSel.innerHTML = '<option value="">-- 業者を選択 --</option>';
+  
+  Object.keys(vendorMaster).forEach(c => { vSel.innerHTML += `<option value="${c}">${vendorMaster[c].name} (${c})</option>`; });
+  Object.keys(deptMaster).forEach(c => { dSel.innerHTML += `<option value="${c}">${deptMaster[c].name} (${c})</option>`; });
+  Object.keys(itemMaster).forEach(j => { iSel.innerHTML += `<option value="${j}">${itemMaster[j].name} [${itemMaster[j].maker}]</option>`; });
+}
+
+// --- 発注カード生成ロジック ---
+function addCardToPrint() {
+  const dCode = document.getElementById("print_dept_select").value;
+  const jan = document.getElementById("print_item_select").value;
+  if(!dCode || !jan) { alert("部署と商品を選択してください。"); return; }
+  printQueue.push({ dCode, jan });
+  renderPrintGrid();
+}
+function clearPrintList() { printQueue = []; renderPrintGrid(); }
+function renderPrintGrid() {
+  const pGrid = document.getElementById("previewGrid");
+  const aGrid = document.getElementById("actualPrintGrid");
+  if(!pGrid || !aGrid) return;
+  pGrid.innerHTML = ""; aGrid.innerHTML = "";
+  document.getElementById("cardCount").innerText = printQueue.length;
+  
+  printQueue.forEach((cData, idx) => {
+    const dept = deptMaster[cData.dCode];
+    const item = itemMaster[cData.jan];
+    if(!dept || !item) return;
+    
+    const vendorName = vendorMaster[item.vCode] ? vendorMaster[item.vCode].name : `未登録(${item.vCode})`;
+    const barcodeValue = `${cData.dCode}${cData.jan}`;
+    const svgHtml = generateCode39Svg(barcodeValue);
+    
+    const cardHtml = `
+      <div class="order-card">
+        <div class="card-dept">${dept.name}</div>
+        <div class="card-details">
+          <div><b>発注先:</b> ${vendorName}</div>
+          <div><b>メーカー:</b> ${item.maker || '-'}</div>
+          <div><b>商品名:</b> ${item.name}</div>
+          <div><b>規格:</b> ${item.spec || '-'}</div>
+        </div>
+        <div class="card-qty">数量：1 ${item.unit}</div>
+        <div class="card-barcode-zone">
+          ${svgHtml}
+          <div class="barcode-text">*${barcodeValue}*</div>
+        </div>
+        <button class="btn btn-danger no-print" style="position:absolute; top:2px; right:2px; padding:1px 4px; font-size:9px;" onclick="removeCardFromQueue(${idx}); event.stopPropagation();">X</button>
+      </div>
+    `;
+    pGrid.innerHTML += cardHtml;
+    aGrid.innerHTML += cardHtml;
+  });
+}
+function removeCardFromQueue(idx) { printQueue.splice(idx, 1); renderPrintGrid(); }
+
+// --- バーコード連続スキャン（消費登録）処理 ---
+function processCardScan(scannedValue) {
+  if(!scannedValue) return;
+  let foundDeptCode = "";
+  let foundJan = "";
+  
+  const dCodes = Object.keys(deptMaster);
+  for(let code of dCodes) {
+    if(scannedValue.startsWith(code)) {
+      foundDeptCode = code;
+      foundJan = scannedValue.substring(code.length);
+      break;
+    }
+  }
+  
+  const alertBox = document.getElementById("alertBox");
+  if(!foundDeptCode || !itemMaster[foundJan]) {
+    alertBox.className = "alert-box alert-ng";
+    alertBox.innerText = `⚠️ 読取エラー: 該当するマスタがありません。 (値: ${scannedValue})`;
+    alertBox.style.display = "block";
+    return;
+  }
+  
+  const dept = deptMaster[foundDeptCode];
+  const item = itemMaster[foundJan];
+  
+  const now = new Date();
+  const timeStr = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  
+  consumeLogs.unshift({
+    id: "c_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+    time: timeStr,
+    deptCode: foundDeptCode,
+    deptName: dept.name,
+    jan: foundJan,
+    vCode: item.vCode,
+    maker: item.maker,
+    itemName: item.name,
+    itemSpec: item.spec,
+    qty: 1,
+    unit: item.unit,
+    isOrdered: false
+  });
+  
+  localStorage.setItem("spd_c_logs", JSON.stringify(consumeLogs));
+  renderLogTable();
+  
+  alertBox.className = "alert-box alert-ok";
+  alertBox.innerText = `✅ 登録完了: 【${dept.name}】 ${item.name} (1 ${item.unit})`;
+  alertBox.style.display = "block";
+}
+
+function renderLogTable() {
+  const tbody = document.getElementById("logTableBody");
+  if(!tbody) return;
+  tbody.innerHTML = "";
+  consumeLogs.forEach((log, idx) => {
+    const tr = document.createElement("tr");
+    const statusStr = log.isOrdered ? `<span style="color:green;">✔ 発注済</span>` : `<span style="color:#e67e22; font-weight:bold;">未発注</span>`;
+    tr.innerHTML = `<td>${log.time}</td><td><b>${log.deptName}</b></td>
+      <td><b>${log.itemName} ${log.itemSpec || ''}</b><br><small style="color:#7f8c8d;">${log.maker || '-'}</small></td>
+      <td><span style="color:#e67e22; font-weight:bold;">${log.qty} ${log.unit}</span></td><td>${statusStr}</td>
+      <td><button class="btn btn-danger" style="padding:1px 5px; font-size:10px;" onclick="deleteLog(${idx})">取消</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function deleteLog(idx) { consumeLogs.splice(idx, 1); localStorage.setItem("spd_c_logs", JSON.stringify(consumeLogs)); renderLogTable(); if(document.getElementById("orderModal").style.display === "flex") refreshOrderDashboard(); }
+function clearLogs() { if(confirm("実績履歴をすべてクリアしますか？")) { consumeLogs = []; localStorage.removeItem("spd_c_logs"); renderLogTable(); if(document.getElementById("orderModal").style.display === "flex") refreshOrderDashboard(); } }
+
+// --- 発注書ロジック・集計システム ---
+function getUnprintedGroupedData() {
+  let unprintedLogs = consumeLogs.filter(l => !l.isOrdered);
+  let groups = {};
+  
+  unprintedLogs.forEach(log => {
+    let key = `${log.vCode}_${log.jan}_${log.deptCode}`;
+    if(!groups[key]) {
+      groups[key] = {
+        vCode: log.vCode,
+        jan: log.jan,
+        deptCode: log.deptCode,
+        deptName: log.deptName,
+        maker: log.maker,
+        itemName: log.itemName,
+        itemSpec: log.itemSpec,
+        unit: log.unit,
+        qty: 0,
+        rawLogIds: []
+      };
+    }
+    groups[key].qty += log.qty;
+    groups[key].rawLogIds.push(log.id);
+  });
+  return Object.values(groups);
+}
+
+function refreshOrderDashboard() {
+  const tbody = document.getElementById("unprintedOrderBody");
+  if(!tbody) return;
+  tbody.innerHTML = "";
+  let grouped = getUnprintedGroupedData();
+  
+  if(grouped.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#95a5a6; padding:20px;">未発注のデータはありません。</td></tr>`;
+  } else {
+    grouped.forEach(g => {
+      const vName = vendorMaster[g.vCode] ? vendorMaster[g.vCode].name : g.vCode;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${vName}</td><td>${g.maker || '-'}</td><td><b>${g.itemName} ${g.itemSpec || ''}</b></td>
+        <td style="color:#e67e22; font-weight:bold;">${g.qty} ${g.unit}</td><td><mark>${g.deptName}</mark></td>`;
+      tbody.appendChild(tr);
+    });
+  }
+  
+  const hBody = document.getElementById("orderHistoryBody");
+  if(!hBody) return;
+  hBody.innerHTML = "";
+  if(poHistory.length === 0) {
+    hBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#95a5a6; padding:15px;">発行履歴はありません。</td></tr>`;
+  } else {
+    poHistory.forEach((h, idx) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${h.date}</td><td><code>${h.poNumber}</code></td><td><b>${h.vendorName}</b></td><td>${h.items.length}品目</td>
+        <td>
+          <button class="btn btn-success" style="padding:2px 6px; font-size:11px;" onclick="printOldPO(${idx})">🖨️ 再発行</button>
+          <button class="btn btn-danger" style="padding:2px 6px; font-size:11px;" onclick="deletePoHistory(${idx})">削除</button>
+        </td>`;
+      hBody.appendChild(tr);
+    });
+  }
+}
+
+function generatePurchaseOrders() {
+  let grouped = getUnprintedGroupedData();
+  if(grouped.length === 0) { alert("発注対象の未発行データがありません。"); return; }
+  
+  let vendorOrders = {};
+  grouped.forEach(g => {
+    if(!vendorOrders[g.vCode]) vendorOrders[g.vCode] = [];
+    vendorOrders[g.vCode].push(g);
+  });
+  
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
+  
+  let newHistoryRecords = [];
+  
+  Object.keys(vendorOrders).forEach((vCode, vIdx) => {
+    const poNumber = `PO-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${vCode}-${String(vIdx+1).padStart(2,'0')}`;
+    const vName = vendorMaster[vCode] ? vendorMaster[vCode].name : "不明な業者";
+    
+    let poItems = vendorOrders[vCode].map(item => ({
+      maker: item.maker,
+      itemName: item.itemName,
+      itemSpec: item.itemSpec,
+      qty: item.qty,
+      unit: item.unit,
+      deptName: item.deptName
+    }));
+    
+    newHistoryRecords.push({
+      poNumber: poNumber,
+      date: dateStr + " " + String(now.getHours()).padStart(2,'0') + ":" + String(now.getMinutes()).padStart(2,'0'),
+      vendorName: vName,
+      items: poItems
+    });
+    
+    let allLogIds = [];
+    vendorOrders[vCode].forEach(g => { allLogIds = allLogIds.concat(g.rawLogIds); });
+    consumeLogs.forEach(log => {
+      if(allLogIds.includes(log.id)) log.isOrdered = true;
+    });
+  });
+  
+  poHistory = newHistoryRecords.concat(poHistory);
+  localStorage.setItem("spd_c_logs", JSON.stringify(consumeLogs));
+  localStorage.setItem("spd_po_history", JSON.stringify(poHistory));
+  
+  renderLogTable();
+  refreshOrderDashboard();
+  
+  renderPoPrintView(newHistoryRecords);
+  window.print();
+}
+
+function renderPoPrintView(poList) {
+  const grid = document.getElementById("actualPoPrintGrid");
+  if(!grid) return;
+  grid.innerHTML = ""; 
+  document.getElementById("actualPrintGrid").innerHTML = "";
+  
+  poList.forEach(po => {
+    let rowsHtml = "";
+    po.items.forEach((item, index) => {
+      rowsHtml += `
+        <tr>
+          <td style="text-align:center;">${index + 1}</td>
+          <td>${item.maker || '-'}</td>
+          <td><b>${item.itemName}</b></td>
+          <td>${item.itemSpec || '-'}</td>
+          <td style="text-align:right; font-weight:bold;">${item.qty}</td>
+          <td style="text-align:center;">${item.unit}</td>
+          <td>${item.deptName}</td>
+        </tr>
+      `;
+    });
+    
+    const pageHtml = `
+      <div class="po-print-page">
+        <div class="po-header">
+          <div>
+            <strong style="font-size:16px;">発注先御中：</strong><br>
+            <span style="font-size:20px; font-weight:bold; border-bottom:1px solid #000; padding-right:30px;">${po.vendorName}</span>
+          </div>
+          <div style="text-align: right; font-size:12px; line-height:1.4;">
+            <div>発注番号: ${po.poNumber}</div>
+            <div>発注日時: ${po.date}</div>
+            <div style="margin-top:5px; font-weight:bold; font-size:14px;">${facilityInfo.name || '(施設名未設定)'}</div>
+            <div>〒${facilityInfo.zip || '---'}</div>
+            <div>${facilityInfo.addr || ''}</div>
+            <div>TEL: ${facilityInfo.tel || ''} / FAX: ${facilityInfo.fax || ''}</div>
+            <div>部署: ${facilityInfo.dept || ''} / 担当: ${facilityInfo.user || ''}</div>
+          </div>
+        </div>
+        
+        <div class="po-title">物 品 発 注 書</div>
+        <p>下記の通り、物品を発注いたします。納期等のご確認をお願い申し上げます。</p>
+        
+        <table class="po-table">
+          <thead>
+            <tr>
+              <th style="width:5%;">No</th>
+              <th style="width:15%;">メーカー</th>
+              <th style="width:35%;">物品名</th>
+              <th style="width:15%;">規格・型番</th>
+              <th style="width:8%;">数量</th>
+              <th style="width:8%;">単位</th>
+              <th style="width:14%;">行備考(部署名)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+    grid.innerHTML += pageHtml;
+  });
+}
+
+function printOldPO(idx) {
+  const targetPo = poHistory[idx];
+  if(!targetPo) return;
+  renderPoPrintView([targetPo]);
+  window.print();
+}
+
+function deletePoHistory(idx) {
+  if(confirm("この発注履歴を削除しますか？")) {
+    poHistory.splice(idx, 1);
+    localStorage.setItem("spd_po_history", JSON.stringify(poHistory));
+    refreshOrderDashboard();
+  }
+}
+
+// --- 実績CSV出力 ---
+function downloadLogCSV() {
+  if(consumeLogs.length === 0) { alert("データがありません。"); return; }
+  let csv = "\uFEFF消費日時,部署名,メーカー,商品名・規格,数量・単位,状態\r\n";
+  consumeLogs.forEach(l => { 
+    let st = l.isOrdered ? "発注済" : "未発注";
+    csv += `"${l.time}","${l.deptName}","${l.maker}","${l.itemName} ${l.itemSpec || ''}","${l.qty} ${l.unit}","${st}"\r\n`; 
+  });
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `SPD_消費実績_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// --- バックアップ・復元 ---
+function exportBackup() {
+  const data = { items: itemMaster, depts: deptMaster, vendors: vendorMaster, facility: facilityInfo, logs: consumeLogs, poHistory: poHistory };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `SPD_トータルシステムバックアップ_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importBackup(input) {
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const d = JSON.parse(e.target.result);
+      if(confirm("システムデータを上書き復元しますか？")) {
+        if(d.items) itemMaster = d.items;
+        if(d.depts) deptMaster = d.depts;
+        if(d.vendors) vendorMaster = d.vendors;
+        if(d.facility) facilityInfo = d.facility;
+        if(d.logs) consumeLogs = d.logs;
+        if(d.poHistory) poHistory = d.poHistory;
+        
+        localStorage.setItem("spd_i_master", JSON.stringify(itemMaster));
+        localStorage.setItem("spd_d_master", JSON.stringify(deptMaster));
+        localStorage.setItem("spd_v_master", JSON.stringify(vendorMaster));
+        localStorage.setItem("spd_f_info", JSON.stringify(facilityInfo));
+        localStorage.setItem("spd_c_logs", JSON.stringify(consumeLogs));
+        localStorage.setItem("spd_po_history", JSON.stringify(poHistory));
+        
+        renderItemTable(); renderDeptTable(); renderVendorTable(); loadFacilityForm(); updateSelectOptions(); renderLogTable(); renderPrintGrid();
+        alert("すべてのデータを復元しました。");
+      }
+    } catch(err) { alert("不適切なファイル形式です。"); }
+  };
+  reader.readAsText(file);
+}
+
+// --- Code39 バーコード生成ロジック ---
+function generateCode39Svg(text) {
+  const chars = {
+    '0':'1010011011010', '1':'1101001010110', '2':'1011001010110', '3':'1101100101010',
+    '4':'1010011010110', '5':'1101001101010', '6':'1011001101010', '7':'1010010110110',
+    '8':'1101001011010', '9':'1011001011010', 'A':'1101010010110', 'B':'1011010010110',
+    'C':'1101101001010', 'D':'1010110010110', 'E':'1101011001010', 'F':'1011011001010',
+    'G':'1010100110110', 'H':'1101010011010', 'I':'1011010011010', 'J':'1010110011010',
+    'K':'1101010100110', 'L':'1011010100110', 'M':'1101101010010', 'N':'1010110100110',
+    'O':'1101011010010', 'P':'1011011010010', 'Q':'1010101100110', 'R':'1101010110010',
+    'S':'1011010110010', 'T':'1010110110010', 'U':'1100101010110', 'V':'1001101010110',
+    'W':'1100110101010', 'X':'1001011010110', 'Y':'1100101101010', 'Z':'1001101101010',
+    '-':'1001010110110', '.':'1100101011010', ' ':'1001101011010', '*':'1001011011010',
+    '$':'1001001001010', '/':'1001001010010', '+':'1001010010010', '%':'1010010010010'
+  };
+  const fullText = `*${text.toUpperCase()}*`;
+  let binString = "";
+  for (let i = 0; i < fullText.length; i++) {
+    const c = fullText[i];
+    if (chars[c]) binString += chars[c] + "0";
+  }
+  const width = binString.length * 2;
+  let svg = `<svg class="barcode-svg" viewBox="0 0 ${width} 40" preserveAspectRatio="none">`;
+  for (let i = 0; i < binString.length; i++) {
+    if (binString[i] === '1') svg += `<rect x="${i * 2}" y="0" width="2" height="40" fill="#000" />`;
+  }
+  svg += `</svg>`;
+  return svg;
+}
+</script>
+</body>
+</html>
