@@ -1054,12 +1054,31 @@ function generatePurchaseOrders() {
   });
   
   const now = new Date();
-  const dateStr = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
+  // 日付文字列 (YYYYMMDD)
+  const ymd = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
   
   let newHistoryRecords = [];
   
-  Object.keys(vendorOrders).forEach((vCode, vIdx) => {
-    const poNumber = `PO-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${vCode}-${String(vIdx+1).padStart(2,'0')}`;
+  Object.keys(vendorOrders).forEach((vCode) => {
+    // --- 【変更点】既存履歴からその日のその業者の最大連番を取得してカウントアップ ---
+    let maxSeq = 0;
+    const prefix = `${ymd}-${vCode}-`;
+    
+    // 過去の発注履歴を確認
+    poHistory.forEach(h => {
+      if (h.poNumber && h.poNumber.startsWith(prefix)) {
+        // 接頭辞を取り除いた後の数値を取得
+        const seqPart = h.poNumber.replace(prefix, "");
+        const seq = parseInt(seqPart, 10);
+        if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+      }
+    });
+    
+    // 連番を生成（3桁ゼロ埋め）
+    const nextSeq = maxSeq + 1;
+    const poNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+    // ------------------------------------------------------------------------
+    
     const vName = vendorMaster[vCode] ? vendorMaster[vCode].name : "不明な業者";
     
     let poItems = vendorOrders[vCode].map(item => ({
@@ -1073,7 +1092,7 @@ function generatePurchaseOrders() {
     
     newHistoryRecords.push({
       poNumber: poNumber,
-      date: dateStr + " " + String(now.getHours()).padStart(2,'0') + ":" + String(now.getMinutes()).padStart(2,'0'),
+      date: `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`,
       vendorName: vName,
       items: poItems
     });
@@ -1094,7 +1113,6 @@ function generatePurchaseOrders() {
   renderPoPrintView(newHistoryRecords);
   window.print();
 }
-
 function renderPoPrintView(poList) {
   const grid = document.getElementById("actualPoPrintGrid");
   if(!grid) return;
