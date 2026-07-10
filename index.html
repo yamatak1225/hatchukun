@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>院内発注カード管理システム</title>
+<title>MediLogi SPD</title>
 <style>
   * { box-sizing: border-box; font-family: "Segoe UI", Meiryo, sans-serif; }
   body { margin: 0; background: #f4f6f9; color: #333; display: flex; flex-direction: column; height: 100vh; }
@@ -23,7 +23,8 @@
 
   /* ヘッダー */
   .header { background: #2c3e50; color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex-wrap: wrap; gap: 10px; }
-  .header h1 { margin: 0; font-size: 18px; }
+  .header h1 { margin: 0; font-size: 20px; line-height: 1.2; }
+  .header .subtitle { font-size: 12px; font-weight: normal; color: #b2bec3; margin-top: 2px; display: block; }
   .header-info { display: flex; flex-direction: column; font-size: 11px; color: #b2bec3; text-align: right; }
   .storage-warn { color: #ff7675; font-weight: bold; }
   .header-actions { display: flex; gap: 8px; align-items: center; }
@@ -38,7 +39,7 @@
   .right-column { flex: 35; }
 
   h2 { font-size: 14px; margin-top: 0; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #34495e; color: #2c3e50; display: flex; justify-content: space-between; align-items: center; }
-  h3 { font-size: 13px; margin-top: 0; color: #2c3e50; border-left: 4px solid #3498db; padding-left: 8px; }
+  h3 { font-size: 13px; margin-top: 0; color: #2c3e50; border-left: 4px solid #3498db; padding-left: 8px; display: flex; justify-content: space-between; align-items: center; }
 
   /* フォーム・入力関連 */
   .form-group { margin-bottom: 8px; }
@@ -109,7 +110,8 @@
 
 <div class="header no-print">
   <div>
-    <h1>📦 院内発注カード管理システム</h1>
+    <h1>📦 MediLogi SPD</h1>
+    <span class="subtitle">発注カード方式による簡易SPDシステム</span>
   </div>
   <div class="header-info">
     <span class="storage-warn">⚠️ 現在保存先：このブラウザのみ (ブラウザデータ削除で消失します)</span>
@@ -135,7 +137,10 @@
     <div class="panel" style="flex: 6;">
       <h2>
         <span>📝 商品マスタ登録 <span style="font-size:11px; color:#7f8c8d;" id="itemCount">0件</span></span>
-        <button class="btn btn-info btn-xs" onclick="openSearchModal('master')">🔍 商品検索・編集</button>
+        <div style="display: flex; gap: 4px;">
+          <button class="btn btn-info btn-xs" onclick="openSearchModal('master')">🔍 商品検索・編集</button>
+          <button class="btn btn-success btn-xs" onclick="downloadItemCSV()">📤 商品マスタ出力</button>
+        </div>
       </h2>
       <form id="itemForm" onsubmit="saveItem(event)">
         <div class="form-row">
@@ -160,7 +165,10 @@
 
     <!-- 部署マスタ -->
     <div class="panel" style="flex: 4;">
-      <h2>🏢 部署マスタ登録 <span style="font-size:11px; color:#7f8c8d;" id="deptCount">0件</span></h2>
+      <h2>
+        <span>🏢 部署マスタ登録 <span style="font-size:11px; color:#7f8c8d;" id="deptCount">0件</span></span>
+        <button class="btn btn-success btn-xs" onclick="downloadDeptCSV()">📤 部署マスタ出力</button>
+      </h2>
       <form id="deptForm" onsubmit="saveDept(event)">
         <div class="form-row">
           <div class="form-group" style="flex:4;"><label>部署コード *</label><input type="text" id="d_code" required placeholder="例：A01"></div>
@@ -218,7 +226,7 @@
     </div>
     
     <h2>📊 消費実績履歴 
-      <button class="btn btn-success" style="padding: 4px 10px; font-size: 11px;" onclick="downloadLogCSV()">📤 実績CSV出力</button>
+      <button class="btn btn-success" style="padding: 4px 8px; font-size: 11px;" onclick="downloadLogCSV()">📤 実績CSV出力</button>
     </h2>
     <div class="table-wrapper">
       <table>
@@ -327,7 +335,10 @@
         </form>
       </div>
       <div class="panel" style="flex: 1;">
-        <h3>🚚 発注先業者マスタ登録</h3>
+        <h3>
+          <span>🚚 発注先業者マスタ登録</span>
+          <button class="btn btn-success btn-xs" onclick="downloadVendorCSV()">📤 業者マスタ出力</button>
+        </h3>
         <form id="vendorForm" onsubmit="saveVendor(event)">
           <div class="form-row">
             <div class="form-group" style="flex: 4;"><label>業者コード *</label><input type="text" id="v_code" required placeholder="例：V01"></div>
@@ -1054,30 +1065,24 @@ function generatePurchaseOrders() {
   });
   
   const now = new Date();
-  // 日付文字列 (YYYYMMDD)
   const ymd = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
   
   let newHistoryRecords = [];
   
   Object.keys(vendorOrders).forEach((vCode) => {
-    // --- 【変更点】既存履歴からその日のその業者の最大連番を取得してカウントアップ ---
     let maxSeq = 0;
     const prefix = `${ymd}-${vCode}-`;
     
-    // 過去の発注履歴を確認
     poHistory.forEach(h => {
       if (h.poNumber && h.poNumber.startsWith(prefix)) {
-        // 接頭辞を取り除いた後の数値を取得
         const seqPart = h.poNumber.replace(prefix, "");
         const seq = parseInt(seqPart, 10);
         if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
       }
     });
     
-    // 連番を生成（3桁ゼロ埋め）
     const nextSeq = maxSeq + 1;
     const poNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
-    // ------------------------------------------------------------------------
     
     const vName = vendorMaster[vCode] ? vendorMaster[vCode].name : "不明な業者";
     
@@ -1193,6 +1198,53 @@ function deletePoHistory(idx) {
   }
 }
 
+// 商品マスタCSV出力
+function downloadItemCSV() {
+  const keys = Object.keys(itemMaster);
+  if(keys.length === 0) { alert("商品マスタにデータがありません。"); return; }
+  let csv = "\uFEFFJANコード,業者コード,業者名,メーカー名,商品名,規格・型番,単位\r\n";
+  keys.forEach(jan => {
+    const it = itemMaster[jan];
+    const vName = vendorMaster[it.vCode] ? vendorMaster[it.vCode].name : "";
+    csv += `="${jan}","${it.vCode}","${vName}","${it.maker || ''}","${it.name}","${it.spec || ''}","${it.unit}"\r\n`;
+  });
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `MediLogi_商品マスタ_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// 部署マスタCSV出力
+function downloadDeptCSV() {
+  const keys = Object.keys(deptMaster);
+  if(keys.length === 0) { alert("部署マスタにデータがありません。"); return; }
+  let csv = "\uFEFF部署コード,部署名\r\n";
+  keys.forEach(code => {
+    csv += `="${code}","${deptMaster[code].name}"\r\n`;
+  });
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `MediLogi_部署マスタ_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// 業者マスタCSV出力
+function downloadVendorCSV() {
+  const keys = Object.keys(vendorMaster);
+  if(keys.length === 0) { alert("業者マスタにデータがありません。"); return; }
+  let csv = "\uFEFF業者コード,業者名\r\n";
+  keys.forEach(code => {
+    csv += `="${code}","${vendorMaster[code].name}"\r\n`;
+  });
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `MediLogi_業者マスタ_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
 // 実績CSV出力
 function downloadLogCSV() {
   if(consumeLogs.length === 0) { alert("データがありません。"); return; }
@@ -1204,7 +1256,7 @@ function downloadLogCSV() {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `院内発注カード管理システム_消費実績_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `MediLogi_消費実績_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
 }
 
@@ -1223,7 +1275,6 @@ function exportManualBackup() {
   a.download = `院内発注カード管理システム_バックアップ_${dateSign}_${timeSign}.json`;
   a.click();
 
-  // ヘッダーに最終手動バックアップ日時を表示
   document.getElementById("backupTimeDisplay").innerText = `最終手動バックアップ：${displayStr}`;
 }
 
